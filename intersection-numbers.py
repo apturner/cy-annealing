@@ -1,5 +1,6 @@
 import itertools
 from dimod import BinaryPolynomial, make_quadratic, BINARY
+from dwave.system import LeapHybridSampler
 from dwave.samplers import SimulatedAnnealingSampler
 from dimod import ExactSolver, ExactPolySolver
 from ast import literal_eval
@@ -33,8 +34,8 @@ correct_rot = int_tens_1_a1_rot
 
 # parameters for defining polynomial
 res = 2  # range of values is -2^res to 2^res - 1
-det_strength = 10.0**6
-reduction_strength = 10.0**5
+det_strength = 10.0**10
+reduction_strength = 10.0**1
 
 # parameters for annealing
 n_samples = 10**4
@@ -105,73 +106,127 @@ poly = BinaryPolynomial(poly_terms, BINARY)
 quad = make_quadratic(poly, reduction_strength, BINARY)
 quad.normalize()
 
-
-class Printer:
-    def __init__(self):
-        self.counter = 0
-        self.percent = 0
-
-    def __call__(self):
-        self.counter += 1
-        if self.counter % (n_samples // 100) == 0:
-            self.percent += 1
-            print(self.percent, "%")
-        return False
-
-
-# sample
-sampler = SimulatedAnnealingSampler()
-sampleset = sampler.sample(
-    quad,
-    num_reads=n_samples,
-    num_sweeps=n_sweeps,
-    num_sweeps_per_beta=n_per_beta,
-    beta_range=beta_bounds,
-    beta_schedule_type=beta_type,
-    interrupt_function=Printer(),
-)
+# sample with LeapHybridSampler
+hybrid_sampler = LeapHybridSampler()
+hybrid_sampleset = hybrid_sampler.sample(quad)
 
 # aggregate samples and pick best solution
-aggregate = sampleset.aggregate()
-vars = aggregate.variables
-first_sol = aggregate.first.sample
-result = [
+hybrid_aggregate = hybrid_sampleset.aggregate()
+hybrid_vars = hybrid_aggregate.variables
+hybrid_first_sol = hybrid_aggregate.first.sample
+hybrid_result = [
     sum(
-        (-1 if r == res else 1) * 2**r * first_sol[(1, 1, r)] for r in range(res + 1)
+        (-1 if r == res else 1) * 2**r * hybrid_first_sol[(1, 1, r)]
+        for r in range(res + 1)
     ),
     sum(
-        (-1 if r == res else 1) * 2**r * first_sol[(1, 2, r)] for r in range(res + 1)
+        (-1 if r == res else 1) * 2**r * hybrid_first_sol[(1, 2, r)]
+        for r in range(res + 1)
     ),
     sum(
-        (-1 if r == res else 1) * 2**r * first_sol[(2, 1, r)] for r in range(res + 1)
+        (-1 if r == res else 1) * 2**r * hybrid_first_sol[(2, 1, r)]
+        for r in range(res + 1)
     ),
     sum(
-        (-1 if r == res else 1) * 2**r * first_sol[(2, 2, r)] for r in range(res + 1)
+        (-1 if r == res else 1) * 2**r * hybrid_first_sol[(2, 2, r)]
+        for r in range(res + 1)
     ),
 ]
-print("Correct answer found: ", result == correct_rot)
+print("\nHybrid solver results: ")
+print("Correct answer found: ", hybrid_result == correct_rot)
 print(
     "Determinant constraint satisfied: ",
-    result[0] * result[3] - result[1] * result[2] == 1,
+    hybrid_result[0] * hybrid_result[3] - hybrid_result[1] * hybrid_result[2] == 1,
 )
-reduction_constraints_satisfied = True
-for vari in vars:
+hybrid_reduction_constraints_satisfied = True
+for vari in hybrid_vars:
     if type(vari) == str:
         var_prod = reduce(
-            lambda prod, var_name: prod * first_sol[literal_eval(var_name)],
+            lambda prod, var_name: prod * hybrid_first_sol[literal_eval(var_name)],
             vari.split("*"),
             1,
         )
-        reduction_constraints_satisfied == reduction_constraints_satisfied & var_prod == first_sol[
+        hybrid_reduction_constraints_satisfied == hybrid_reduction_constraints_satisfied & var_prod == hybrid_first_sol[
             vari
         ]
-print("Reduction constraints satisfied: ", reduction_constraints_satisfied, "\n")
+print("Reduction constraints satisfied: ", hybrid_reduction_constraints_satisfied, "\n")
 
 # solution details
 print("Correct answer: ", correct_rot)
-print("Result: ", result)
-print("Determinant: ", result[0] * result[3] - result[1] * result[2])
-print("Energy: ", aggregate.first.energy)
+print("Result: ", hybrid_result)
+print(
+    "Determinant: ",
+    hybrid_result[0] * hybrid_result[3] - hybrid_result[1] * hybrid_result[2],
+)
+print("Energy: ", hybrid_aggregate.first.energy)
+
+# class Printer:
+#     def __init__(self):
+#         self.counter = 0
+#         self.percent = 0
+
+#     def __call__(self):
+#         self.counter += 1
+#         if self.counter % (n_samples // 100) == 0:
+#             self.percent += 1
+#             print(self.percent, "%")
+#         return False
+
+
+# # sample
+# sampler = SimulatedAnnealingSampler()
+# sampleset = sampler.sample(
+#     quad,
+#     num_reads=n_samples,
+#     num_sweeps=n_sweeps,
+#     num_sweeps_per_beta=n_per_beta,
+#     beta_range=beta_bounds,
+#     beta_schedule_type=beta_type,
+#     interrupt_function=Printer(),
+# )
+
+# # aggregate samples and pick best solution
+# aggregate = sampleset.aggregate()
+# agg_vars = aggregate.variables
+# first_sol = aggregate.first.sample
+# result = [
+#     sum(
+#         (-1 if r == res else 1) * 2**r * first_sol[(1, 1, r)] for r in range(res + 1)
+#     ),
+#     sum(
+#         (-1 if r == res else 1) * 2**r * first_sol[(1, 2, r)] for r in range(res + 1)
+#     ),
+#     sum(
+#         (-1 if r == res else 1) * 2**r * first_sol[(2, 1, r)] for r in range(res + 1)
+#     ),
+#     sum(
+#         (-1 if r == res else 1) * 2**r * first_sol[(2, 2, r)] for r in range(res + 1)
+#     ),
+# ]
+# print("\nLocal solver results: ")
+# print("Correct answer found: ", result == correct_rot)
+# print(
+#     "Determinant constraint satisfied: ",
+#     result[0] * result[3] - result[1] * result[2] == 1,
+# )
+# reduction_constraints_satisfied = True
+# for vari in agg_vars:
+#     if type(vari) == str:
+#         var_prod = reduce(
+#             lambda prod, var_name: prod * first_sol[literal_eval(var_name)],
+#             vari.split("*"),
+#             1,
+#         )
+#         reduction_constraints_satisfied == reduction_constraints_satisfied & var_prod == first_sol[
+#             vari
+#         ]
+# print("Reduction constraints satisfied: ", reduction_constraints_satisfied, "\n")
+
+# # solution details
+# print("Correct answer: ", correct_rot)
+# print("Result: ", result)
+# print("Determinant: ", result[0] * result[3] - result[1] * result[2])
+# print("Energy: ", aggregate.first.energy)
 
 # exact solution
 # exact_sampler = ExactSolver()
@@ -235,5 +290,3 @@ print("Energy: ", aggregate.first.energy)
 #     - exact_poly_result[0][1] * exact_poly_result[1][0]
 # )
 # print(exact_poly_sample.first.energy)
-
-print("\a")
